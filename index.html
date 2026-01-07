@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meme Dodge Master 🎮</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+            overflow: hidden;
+        }
+        
+        #gameTitle {
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+            animation: pulse 2s infinite;
+            text-align: center;
+        }
+        
+        #scoreBoard {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .speedIndicator {
+            color: #fbbf24;
+            font-size: 18px;
+            margin-top: 5px;
+        }
+        
+        #gameCanvas {
+            border: 5px solid #ffd700;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        #controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            padding: 15px 30px;
+            font-size: 20px;
+            font-weight: bold;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: white;
+            user-select: none;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: scale(1.1);
+        }
+        
+        button:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        #upBtn, #downBtn {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        }
+        
+        #soundBtn {
+            background: linear-gradient(135deg, #6b7280, #374151);
+        }
+        
+        #shareBtn, #startBtn {
+            background: linear-gradient(135deg, #10b981, #059669);
+            font-size: 24px;
+            padding: 18px 36px;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+        
+        @media (max-width: 850px) {
+            #gameTitle { font-size: 32px; }
+            #scoreBoard { font-size: 18px; }
+            button { padding: 12px 24px; font-size: 16px; }
+            #startBtn { font-size: 20px; padding: 15px 30px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameTitle">🎮 MEME DODGE MASTER 🎮</div>
+    <div id="scoreBoard">
+        <div>Score: <span id="score">0</span> 🏆</div>
+        <div>Best: <span id="highScore">0</span> 👑</div>
+        <div class="speedIndicator" id="speedLevel">Speed: 1x</div>
+    </div>
+    
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    
+    <div id="controls">
+        <button id="startBtn">▶️ START GAME</button>
+        <button id="upBtn" style="display:none;">⬆️ UP</button>
+        <button id="downBtn" style="display:none;">⬇️ DOWN</button>
+        <button id="soundBtn">🔊 SOUND ON</button>
+        <button id="shareBtn" style="display:none;">📤 SHARE</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('highScore');
+        const speedLevelEl = document.getElementById('speedLevel');
+        const startBtn = document.getElementById('startBtn');
+        const upBtn = document.getElementById('upBtn');
+        const downBtn = document.getElementById('downBtn');
+        const soundBtn = document.getElementById('soundBtn');
+        const shareBtn = document.getElementById('shareBtn');
+
+        // Game state
+        let game = {
+            started: false,
+            over: false,
+            playerY: 250,
+            obstacles: [],
+            particles: [],
+            score: 0,
+            highScore: 0,
+            muted: false,
+            deathEmoji: '',
+            
+            // Performance optimization
+            lastUpdate: 0,
+            deltaTime: 0,
+            fps: 60,
+            
+            // Progressive difficulty
+            baseSpeed: 7,
+            currentSpeed: 7,
+            spawnRate: 0.018,
+            
+            // Audio
+            audioCtx: null,
+            lastSpeech: 0,
+            scheduledSounds: []
+        };
+
+        // Load high score
+        try {
+            game.highScore = parseInt(localStorage.getItem('memeDodgeHS') || '0');
+        } catch (e) {
+            game.highScore = 0;
+        }
+        highScoreEl.textContent = game.highScore;
+
+        const MEMES = ['💀', '🤡', '🔥', '💩', '👻', '🤖', '😎', '🦄'];
+        const LANES = [80, 160, 240, 320, 400];
+        
+        const SOUNDS = {
+            '💀': 'OH NO NO NO',
+            '🤡': 'EMOTIONAL DAMAGE',
+            '🔥': 'FIRE IN THE HOLE',
+            '💩': 'BRUHHH',
+            '👻': 'BOO',
+            '🤖': 'BEEP BOOP ERROR',
+            '😎': 'SHEEESH',
+            '🦄': 'RAINBOW FAIL'
+        };
+
+        // Calculate difficulty based on score
+        function updateDifficulty() {
+            // Speed increases every 5 points, max 3x speed
+            const speedMultiplier = Math.min(1 + (game.score / 20), 3);
+            game.currentSpeed = game.baseSpeed * speedMultiplier;
+            
+            // Spawn rate increases gradually
+            game.spawnRate = Math.min(0.018 + (game.score / 1000), 0.035);
+            
+            // Update UI
+            speedLevelEl.textContent = `Speed: ${speedMultiplier.toFixed(1)}x`;
+            
+            // Change color intensity based on speed
+            const intensity = Math.min(speedMultiplier / 3, 1);
+            speedLevelEl.style.color = `rgb(${255 * intensity}, ${251 * (1-intensity/2)}, ${36})`;
+        }
+
+        // Initialize audio context
+        function initAudio() {
+            if (!game.audioCtx && !game.muted) {
+                try {
+                    game.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                } catch (e) {
+                    console.warn('Audio not supported');
+                }
+            }
+        }
+
+        // Optimized speech synthesis with queue
+        function speak(text) {
+            if (game.muted) return;
+            const now = Date.now();
+            if (now - game.lastSpeech < 800) return; // Prevent overlap
+            game.lastSpeech = now;
+            
+            try {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.rate = 1.4;
+                    utterance.pitch = 0.85;
+                    utterance.volume = 0.7;
+                    window.speechSynthesis.speak(utterance);
+                }
+            } catch (e) {}
+        }
+
+        // Optimized beep with cleanup
+        function beep(freq, duration = 0.08) {
+            if (game.muted || !game.audioCtx) return;
+            try {
+                const osc = game.audioCtx.createOscillator();
+                const gain = game.audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(game.audioCtx.destination);
+                osc.frequency.value = freq;
+                gain.gain.value = 0.08;
+                const startTime = game.audioCtx.currentTime;
+                osc.start(startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+                osc.stop(startTime + duration);
+            } catch (e) {}
+        }
+
+        // Player movement with bounds checking
+        function movePlayer(dir) {
+            if (!game.started || game.over) return;
+            beep(520, 0.06);
+            
+            const newY = dir === 'up' 
+                ? game.playerY - 80 
+                : game.playerY + 80;
+            
+            game.playerY = Math.max(50, Math.min(450, newY));
+        }
+
+        // Optimized particle system
+        function createParticles(x, y, emoji) {
+            const count = 10; // Reduced for performance
+            for (let i = 0; i < count; i++) {
+                const angle = (Math.PI * 2 * i) / count;
+                const speed = 3 + Math.random() * 4;
+                game.particles.push({
+                    x, y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 1,
+                    emoji,
+                    life: 1,
+                    rot: Math.random() * 360,
+                    rotSpeed: (Math.random() - 0.5) * 20
+                });
+            }
+        }
+
+        // Start game
+        function startGame() {
+            initAudio();
+            
+            game.started = true;
+            game.over = false;
+            game.playerY = 250;
+            game.obstacles = [];
+            game.particles = [];
+            game.score = 0;
+            game.deathEmoji = '';
+            game.currentSpeed = game.baseSpeed;
+            game.spawnRate = 0.018;
+            game.lastUpdate = performance.now();
+            
+            scoreEl.textContent = '0';
+            speedLevelEl.textContent = 'Speed: 1.0x';
+            speedLevelEl.style.color = '#fbbf24';
+            
+            startBtn.style.display = 'none';
+            upBtn.style.display = 'inline-block';
+            downBtn.style.display = 'inline-block';
+            shareBtn.style.display = 'none';
+            upBtn.disabled = false;
+            downBtn.disabled = false;
+            
+            beep(600, 0.08);
+            
+            // Start game loop with requestAnimationFrame for smoothness
+            gameLoop();
+        }
+
+        // Main game loop using requestAnimationFrame
+        function gameLoop() {
+            if (!game.started || game.over) return;
+            
+            const now = performance.now();
+            game.deltaTime = (now - game.lastUpdate) / 16.67; // Normalize to 60fps
+            game.lastUpdate = now;
+            
+            update();
+            draw();
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Update game state
+        function update() {
+            const dt = Math.min(game.deltaTime, 2); // Cap delta time to prevent huge jumps
+            
+            // Move obstacles with speed scaling
+            game.obstacles.forEach(o => {
+                o.x -= game.currentSpeed * dt;
+                o.rot += 4 * dt;
+            });
+            
+            // Remove off-screen obstacles
+            game.obstacles = game.obstacles.filter(o => o.x > -100);
+
+            // Spawn obstacles with dynamic rate
+            if (Math.random() < game.spawnRate * dt) {
+                game.obstacles.push({
+                    x: 850,
+                    y: LANES[Math.floor(Math.random() * LANES.length)],
+                    emoji: MEMES[Math.floor(Math.random() * MEMES.length)],
+                    scored: false,
+                    rot: 0
+                });
+            }
+
+            // Update particles with physics
+            game.particles.forEach(p => {
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.vy += 0.4 * dt; // Gravity
+                p.life -= 0.02 * dt;
+                p.rot += p.rotSpeed * dt;
+            });
+            
+            // Remove dead particles
+            game.particles = game.particles.filter(p => p.life > 0);
+
+            // Collision detection with optimized hitbox
+            const hit = game.obstacles.find(o => {
+                if (o.x < 50 || o.x > 150) return false; // Quick bounds check
+                const dx = Math.abs(o.x - 100);
+                const dy = Math.abs(o.y - game.playerY);
+                return dx < 38 && dy < 36;
+            });
+
+            if (hit) {
+                endGame(hit.emoji, hit.x, hit.y);
+                return;
+            }
+
+            // Score tracking
+            game.obstacles.forEach(o => {
+                if (!o.scored && o.x < 80) {
+                    o.scored = true;
+                    game.score++;
+                    scoreEl.textContent = game.score;
+                    updateDifficulty();
+                    beep(900 + (game.score * 10), 0.05); // Pitch increases with score
+                }
+            });
+        }
+
+        // End game
+        function endGame(emoji, x, y) {
+            game.over = true;
+            game.deathEmoji = emoji;
+            
+            createParticles(x, y, emoji);
+            speak(SOUNDS[emoji] || 'GAME OVER');
+            
+            if (game.score > game.highScore) {
+                game.highScore = game.score;
+                try {
+                    localStorage.setItem('memeDodgeHS', game.score);
+                } catch (e) {}
+                highScoreEl.textContent = game.highScore;
+            }
+            
+            upBtn.disabled = true;
+            downBtn.disabled = true;
+            startBtn.style.display = 'inline-block';
+            startBtn.textContent = '🔄 RETRY';
+            shareBtn.style.display = 'inline-block';
+            
+            draw();
+        }
+
+        // Render function
+        function draw() {
+            // Clear with semi-transparent overlay for trail effect
+            ctx.fillStyle = 'rgba(99, 102, 241, 0.15)';
+            ctx.fillRect(0, 0, 800, 500);
+
+            // Animated stars
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            const starTime = Date.now() / 40;
+            for (let i = 0; i < 30; i++) {
+                const x = (i * 43 + starTime) % 800;
+                const y = (i * 37) % 500;
+                const size = 1 + (i % 3) * 0.5;
+                ctx.fillRect(x, y, size, size);
+            }
+
+            if (!game.started) {
+                // Start screen
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(0, 0, 800, 500);
+                
+                ctx.font = 'bold 70px Arial';
+                ctx.fillStyle = '#fff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🎯', 400, 140);
+                
+                ctx.font = 'bold 42px Arial';
+                ctx.fillText('DODGE THE MEMES!', 400, 210);
+                
+                ctx.font = '26px Arial';
+                ctx.fillStyle = '#ffd700';
+                ctx.fillText('⬆️ UP / W - Naik', 400, 270);
+                ctx.fillText('⬇️ DOWN / S - Turun', 400, 310);
+                
+                ctx.font = '22px Arial';
+                ctx.fillStyle = '#fff';
+                ctx.fillText('🚀 Semakin tinggi score = semakin cepat!', 400, 360);
+                ctx.fillText('🎵 Tiap emoji punya suara unik!', 400, 395);
+                
+                ctx.font = 'bold 28px Arial';
+                ctx.fillStyle = '#4ade80';
+                ctx.fillText('Tekan START GAME atau SPACE', 400, 450);
+                
+            } else if (game.over) {
+                // Game over screen
+                ctx.fillStyle = 'rgba(0,0,0,0.85)';
+                ctx.fillRect(0, 0, 800, 500);
+                
+                ctx.font = '90px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(game.deathEmoji, 400, 130);
+                
+                ctx.font = 'bold 55px Arial';
+                ctx.fillStyle = '#ef4444';
+                ctx.fillText('GAME OVER!', 400, 210);
+                
+                if (game.score === game.highScore && game.score > 0) {
+                    ctx.font = 'bold 30px Arial';
+                    ctx.fillStyle = '#ffd700';
+                    ctx.fillText('🎉 NEW RECORD! 🎉', 400, 260);
+                }
+                
+                ctx.font = '36px Arial';
+                ctx.fillStyle = '#fff';
+                ctx.fillText(`Score: ${game.score} 🏆`, 400, 320);
+                
+                ctx.font = '24px Arial';
+                ctx.fillStyle = '#d1d5db';
+                ctx.fillText(`Best: ${game.highScore} 👑`, 400, 360);
+                
+                ctx.font = 'bold 26px Arial';
+                ctx.fillStyle = '#a78bfa';
+                ctx.fillText('Tekan SPACE atau RETRY', 400, 440);
+                
+            } else {
+                // Draw player with glow effect
+                ctx.save();
+                ctx.shadowColor = 'rgba(255,255,0,0.8)';
+                ctx.shadowBlur = 15;
+                ctx.font = '55px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🚀', 100, game.playerY);
+                ctx.restore();
+                
+                // Draw obstacles
+                ctx.font = '42px Arial';
+                game.obstacles.forEach(o => {
+                    ctx.save();
+                    ctx.translate(o.x, o.y);
+                    ctx.rotate(o.rot * Math.PI / 180);
+                    ctx.fillText(o.emoji, 0, 0);
+                    ctx.restore();
+                });
+            }
+
+            // Draw particles
+            ctx.font = '28px Arial';
+            game.particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.life * 0.9;
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rot * Math.PI / 180);
+                ctx.fillText(p.emoji, 0, 0);
+                ctx.restore();
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        // Event listeners
+        startBtn.onclick = startGame;
+        upBtn.onclick = () => movePlayer('up');
+        downBtn.onclick = () => movePlayer('down');
+        
+        soundBtn.onclick = () => {
+            game.muted = !game.muted;
+            soundBtn.textContent = game.muted ? '🔇 MUTED' : '🔊 SOUND ON';
+            if (!game.muted) initAudio();
+        };
+
+        shareBtn.onclick = async () => {
+            const txt = `🎮 Aku dapat score ${game.score} di Meme Dodge Master! Bisa kalahkan ga?\n\n${location.href}`;
+            if (navigator.share) {
+                try { await navigator.share({ title: 'Meme Dodge', text: txt }); } catch(e) {}
+            } else if (navigator.clipboard) {
+                try { 
+                    await navigator.clipboard.writeText(txt); 
+                    alert('✅ Link copied to clipboard!');
+                } catch(e) { 
+                    prompt('Copy link ini:', location.href); 
+                }
+            } else {
+                prompt('Copy link ini:', location.href);
+            }
+        };
+
+        // Keyboard controls
+        document.onkeydown = (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                e.preventDefault();
+                movePlayer('up');
+            } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                e.preventDefault();
+                movePlayer('down');
+            } else if (e.key === ' ') {
+                e.preventDefault();
+                if (!game.started || game.over) startGame();
+            }
+        };
+
+        // Initial render
+        draw();
+        
+        // Animation loop for menus
+        function menuLoop() {
+            if (!game.started || game.over) {
+                draw();
+            }
+            requestAnimationFrame(menuLoop);
+        }
+        menuLoop();
+    </script>
+</body>
+</html>
