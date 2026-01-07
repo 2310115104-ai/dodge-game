@@ -1,6 +1,6 @@
 ## ***🎮 Meme Dodge Master***
 
-Game dodge the memes yang seru dengan suara-suara meme kocak!
+Game dodge meme yang seru dengan menggunakan konsep seperti game yang berada di ps 1 atau bisa dibilang game dengan konsep retro yang dikemas dengan tren tren kekinian dengan menggunakan suara-suara meme kocak!
 
 ## *🎯 Cara Main*
 - Arrow UP / W - Gerak ke atas
